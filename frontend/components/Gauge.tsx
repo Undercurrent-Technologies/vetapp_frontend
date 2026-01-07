@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGauge } from "@/hooks/useGauge";
-import { GAUGE_ACCOUNT_ADDRESS, VETAPP_ACCOUNT_ADDRESS } from "@/constants";
+import { AMM_ACCOUNT_ADDRESS, GAUGE_ACCOUNT_ADDRESS, VETAPP_ACCOUNT_ADDRESS } from "@/constants";
 import { toast } from "@/components/ui/use-toast";
 import { aptosClient } from "@/utils/aptosClient";
 import { formatNumber8 } from "@/utils/format";
@@ -215,6 +215,8 @@ function PoolTokenRow({
   isSubmitting,
   isWalletReady,
 }: PoolTokenRowProps) {
+  const tokenName = token.current_token_data?.token_name ?? "";
+  const positionIdx = Number(tokenName.split("_")[1]);
   const positionAddress = token.token_data_id;
   const { data: earnedData, isFetching: earnedFetching } = useQuery({
     queryKey: ["gauge-earned", poolAddress, positionAddress],
@@ -229,10 +231,27 @@ function PoolTokenRow({
       return result[0];
     },
   });
+  const canFetchClaimable = Boolean(AMM_ACCOUNT_ADDRESS && Number.isFinite(positionIdx));
+  const { data: claimableData, isFetching: claimableFetching } = useQuery({
+    queryKey: ["amm-claimable", poolAddress, positionIdx],
+    enabled: canFetchClaimable,
+    queryFn: async (): Promise<Array<string | number | bigint>> => {
+      const result = await aptosClient().view<[Array<string | number | bigint>]>({
+        payload: {
+          function: `${AMM_ACCOUNT_ADDRESS}::amm::claimable`,
+          functionArguments: [poolAddress, positionIdx],
+        },
+      });
+      return result[0] ?? [];
+    },
+  });
+  const claimableDisplay = Array.isArray(claimableData)
+    ? `[${claimableData.map((value) => formatNumber8(value)).join(", ")}]`
+    : "0";
   return (
     <div className="text pl-4 flex flex-col gap-2">
       <div className="flex items-center gap-2 flex-wrap">
-        <span>Position address:</span>
+        <span>PositionID #{positionIdx}</span>
         <code
           className="border border-input rounded px-2 py-1"
           onClick={() => onCopy(token.token_data_id)}
@@ -247,6 +266,12 @@ function PoolTokenRow({
         >
           Uncommit
         </Button>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span>
+          Earned fees:{" "}
+          {canFetchClaimable ? (claimableFetching ? "Loading..." : claimableDisplay) : "unknown"}
+        </span>
       </div>
       <div className="flex items-center gap-2 flex-wrap">
         <span>

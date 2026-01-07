@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUserPositions } from "@/hooks/useUserPositions";
+import { AMM_ACCOUNT_ADDRESS } from "@/constants";
 import { toast } from "@/components/ui/use-toast";
 import { aptosClient } from "@/utils/aptosClient";
+import { formatNumber8 } from "@/utils/format";
 import { Button } from "./ui/button";
 import { gaugeCommit } from "@/entry-functions/gaugeCommit";
 
@@ -147,6 +149,23 @@ function PoolTokenRow({
 }: PoolTokenRowProps) {
   const tokenName = token.current_token_data?.token_name ?? "";
   const positionIdx = Number(tokenName.split("_")[1]);
+  const canFetchClaimable = Boolean(AMM_ACCOUNT_ADDRESS && Number.isFinite(positionIdx));
+  const { data: claimableData, isFetching: claimableFetching } = useQuery({
+    queryKey: ["amm-claimable", poolAddress, positionIdx],
+    enabled: canFetchClaimable,
+    queryFn: async (): Promise<Array<string | number | bigint>> => {
+      const result = await aptosClient().view<[Array<string | number | bigint>]>({
+        payload: {
+          function: `${AMM_ACCOUNT_ADDRESS}::amm::claimable`,
+          functionArguments: [poolAddress, positionIdx],
+        },
+      });
+      return result[0] ?? [];
+    },
+  });
+  const claimableDisplay = Array.isArray(claimableData)
+    ? `[${claimableData.map((value) => formatNumber8(value)).join(", ")}]`
+    : "0";
   return (
     <span className="pl-4 text-xs">
       PositionID #{Number.isFinite(positionIdx) ? positionIdx : "unknown"}:<span>  </span>
@@ -156,6 +175,10 @@ function PoolTokenRow({
       >
         {shorten(token.token_data_id)}
       </code>
+      <span className="ml-2">
+        Earned fees:{" "}
+        {canFetchClaimable ? (claimableFetching ? "Loading..." : claimableDisplay) : "unknown"}
+      </span>
       <Button
         size="sm"
         className="ml-2 h-7 px-2 text-xs"

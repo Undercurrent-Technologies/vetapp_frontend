@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { GAUGE_ACCOUNT_ADDRESS, TAPP_ACCOUNT_ADDRESS, VETAPP_ACCOUNT_ADDRESS } from "@/constants";
+import { AMM_ACCOUNT_ADDRESS, GAUGE_ACCOUNT_ADDRESS, TAPP_ACCOUNT_ADDRESS, VETAPP_ACCOUNT_ADDRESS } from "@/constants";
 import { aptosClient } from "@/utils/aptosClient";
 
 export function QuickAccess() {
@@ -41,6 +41,14 @@ export function QuickAccess() {
         rel="noreferrer"
       >
         Gauge
+      </a>
+      <a
+        className="underline underline-offset-4"
+        href={`https://explorer.aptoslabs.com/account/${AMM_ACCOUNT_ADDRESS ?? ""}/modules/packages`}
+        target="_blank"
+        rel="noreferrer"
+      >
+        AMM
       </a>
 
       Others:
