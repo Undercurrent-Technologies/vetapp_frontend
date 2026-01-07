@@ -58,8 +58,8 @@ export function Gauge() {
     }
   };
 
-  const onClaimReward = async (poolAddress: string, positionIdx: number) => {
-    if (!account || isSubmitting || !Number.isFinite(positionIdx)) {
+  const onClaimReward = async (poolAddress: string, positionAddress: string) => {
+    if (!account || isSubmitting || !positionAddress) {
       return;
     }
 
@@ -68,13 +68,13 @@ export function Gauge() {
       const committedTransaction = await signAndSubmitTransaction({
         data: {
           function: `${VETAPP_ACCOUNT_ADDRESS}::voter::claim_rewards`,
-          functionArguments: [[poolAddress], [positionIdx]],
+          functionArguments: [[poolAddress], [positionAddress]],
         },
       });
       const executedTransaction = await aptosClient().waitForTransaction({
         transactionHash: committedTransaction.hash,
       });
-      queryClient.invalidateQueries({ queryKey: ["gauge-earned", poolAddress, positionIdx] });
+      queryClient.invalidateQueries({ queryKey: ["gauge-earned", poolAddress, positionAddress] });
       toast({
         title: "Success",
         description: `Transaction succeeded, hash: ${executedTransaction.hash}`,
@@ -172,7 +172,7 @@ type PoolTokenRowProps = {
   token: PoolToken;
   onCopy: (value: string) => void;
   onUncommit: (poolAddress: string, positionAddress: string) => void;
-  onClaimReward: (poolAddress: string, positionIdx: number) => void;
+  onClaimReward: (poolAddress: string, positionAddress: string) => void;
   poolAddress: string;
   shorten: (value: string) => string;
   isSubmitting: boolean;
@@ -215,16 +215,15 @@ function PoolTokenRow({
   isSubmitting,
   isWalletReady,
 }: PoolTokenRowProps) {
-  const tokenName = token.current_token_data?.token_name ?? "";
-  const positionIdx = Number(tokenName.split("_")[1]);
+  const positionAddress = token.token_data_id;
   const { data: earnedData, isFetching: earnedFetching } = useQuery({
-    queryKey: ["gauge-earned", poolAddress, positionIdx],
-    enabled: Boolean(GAUGE_ACCOUNT_ADDRESS && Number.isFinite(positionIdx)),
+    queryKey: ["gauge-earned", poolAddress, positionAddress],
+    enabled: Boolean(GAUGE_ACCOUNT_ADDRESS && positionAddress),
     queryFn: async (): Promise<string | number | bigint> => {
       const result = await aptosClient().view<[string | number | bigint]>({
         payload: {
           function: `${GAUGE_ACCOUNT_ADDRESS}::gauge::earned`,
-          functionArguments: [poolAddress, positionIdx],
+          functionArguments: [poolAddress, positionAddress],
         },
       });
       return result[0];
@@ -233,9 +232,7 @@ function PoolTokenRow({
   return (
     <div className="text pl-4 flex flex-col gap-2">
       <div className="flex items-center gap-2 flex-wrap">
-        <span>
-          PositionID #{Number.isFinite(positionIdx) ? positionIdx : "unknown"}:
-        </span>
+        <span>Position address:</span>
         <code
           className="border border-input rounded px-2 py-1"
           onClick={() => onCopy(token.token_data_id)}
@@ -254,7 +251,7 @@ function PoolTokenRow({
       <div className="flex items-center gap-2 flex-wrap">
         <span>
           Earned $TAPP:{" "}
-          {Number.isFinite(positionIdx)
+          {positionAddress
             ? earnedFetching
               ? "Loading..."
               : formatNumber8(earnedData ?? 0)
@@ -263,8 +260,8 @@ function PoolTokenRow({
         <Button
           size="sm"
           className="h-7 px-2 text-xs"
-          disabled={!isWalletReady || isSubmitting || !Number.isFinite(positionIdx)}
-          onClick={() => onClaimReward(poolAddress, positionIdx)}
+          disabled={!isWalletReady || isSubmitting || !positionAddress}
+          onClick={() => onClaimReward(poolAddress, positionAddress)}
         >
           Get reward
         </Button>
