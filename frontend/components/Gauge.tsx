@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGauge } from "@/hooks/useGauge";
-import { VETAPP_ACCOUNT_ADDRESS } from "@/constants";
+import { GAUGE_ACCOUNT_ADDRESS, VETAPP_ACCOUNT_ADDRESS } from "@/constants";
 import { toast } from "@/components/ui/use-toast";
 import { aptosClient } from "@/utils/aptosClient";
 import { Button } from "@/components/ui/button";
@@ -102,23 +102,16 @@ export function Gauge() {
                 ) : (
                   <div className="flex flex-col gap-2">
                     {tokens.map((token) => (
-                      <span key={token.token_data_id} className="pl-4">
-                        TokenID :
-                        <code
-                          className="border border-input rounded px-2 py-1"
-                          onClick={() => onCopy(token.token_data_id)}
-                        >
-                          {shorten(token.token_data_id)}
-                        </code>
-                        <Button
-                          className="ml-2"
-                          size="sm"
-                          disabled={!account || isSubmitting}
-                          onClick={() => onUncommit(poolAddress, token.token_data_id)}
-                        >
-                          Uncommit
-                        </Button>
-                      </span>
+                      <PoolTokenRow
+                        key={token.token_data_id}
+                        token={token}
+                        onCopy={onCopy}
+                        onUncommit={onUncommit}
+                        poolAddress={poolAddress}
+                        shorten={shorten}
+                        isSubmitting={isSubmitting}
+                        isWalletReady={Boolean(account)}
+                      />
                     ))}
                   </div>
                 )}
@@ -128,5 +121,76 @@ export function Gauge() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+type PoolToken = {
+  token_data_id: string;
+  amount: any;
+  current_token_data?: {
+    token_name: string;
+  } | null;
+};
+
+type PoolTokenRowProps = {
+  token: PoolToken;
+  onCopy: (value: string) => void;
+  onUncommit: (poolAddress: string, positionAddress: string) => void;
+  poolAddress: string;
+  shorten: (value: string) => string;
+  isSubmitting: boolean;
+  isWalletReady: boolean;
+};
+
+function PoolTokenRow({
+  token,
+  onCopy,
+  onUncommit,
+  poolAddress,
+  shorten,
+  isSubmitting,
+  isWalletReady,
+}: PoolTokenRowProps) {
+  const tokenName = token.current_token_data?.token_name ?? "";
+  const positionIdx = Number(tokenName.split("_")[1]);
+  const { data: earnedData, isFetching: earnedFetching } = useQuery({
+    queryKey: ["gauge-earned", poolAddress, positionIdx],
+    enabled: Boolean(GAUGE_ACCOUNT_ADDRESS && Number.isFinite(positionIdx)),
+    queryFn: async (): Promise<string | number | bigint> => {
+      const result = await aptosClient().view<[string | number | bigint]>({
+        payload: {
+          function: `${GAUGE_ACCOUNT_ADDRESS}::gauge::earned`,
+          functionArguments: [poolAddress, positionIdx],
+        },
+      });
+      return result[0];
+    },
+  });
+  return (
+    <span className="pl-4">
+      PositionID #{Number.isFinite(positionIdx) ? positionIdx : "unknown"}:<span>  </span>
+      <code
+        className="border border-input rounded px-2 py-1"
+        onClick={() => onCopy(token.token_data_id)}
+      >
+        {shorten(token.token_data_id)}
+      </code>
+      <span className="ml-2">
+        Earned:{" "}
+        {Number.isFinite(positionIdx)
+          ? earnedFetching
+            ? "Loading..."
+            : `${earnedData ?? 0}`
+          : "unknown"}
+      </span>
+      <Button
+        className="ml-2"
+        size="sm"
+        disabled={!isWalletReady || isSubmitting}
+        onClick={() => onUncommit(poolAddress, token.token_data_id)}
+      >
+        Uncommit
+      </Button>
+    </span>
   );
 }

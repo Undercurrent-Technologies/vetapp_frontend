@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUserPositions } from "@/hooks/useUserPositions";
@@ -9,6 +10,7 @@ import { gaugeCommit } from "@/entry-functions/gaugeCommit";
 export function UserPositions() {
   const { account, signAndSubmitTransaction } = useWallet();
   const queryClient = useQueryClient();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { data, isFetching } = useUserPositions();
 
   const tokens = data?.tokens ?? [];
@@ -36,11 +38,12 @@ export function UserPositions() {
   }, new Map<string, { name: string; tokens: typeof tokens }>());
 
   const onCommit = async (poolAddress: string, positionAddress: string) => {
-    if (!account) {
+    if (!account || isSubmitting) {
       return;
     }
 
     try {
+      setIsSubmitting(true);
       const committedTransaction = await signAndSubmitTransaction(
         gaugeCommit({
           poolAddress,
@@ -63,6 +66,7 @@ export function UserPositions() {
         description: "Failed to commit position.",
       });
     } finally {
+      setIsSubmitting(false);
       queryClient.invalidateQueries({ queryKey: ["user-positions", account.address] });
     }
   };
@@ -94,22 +98,16 @@ export function UserPositions() {
                 </h3>
 
                 {group.tokens.map((token) => (
-                  <span key={token.token_data_id} className="pl-4">
-                    TokenID :
-                    <code
-                      className="border border-input rounded px-2 py-1"
-                      onClick={() => onCopy(token.token_data_id)}>
-                      {shorten(token.token_data_id)}
-                    </code>
-                    <Button
-                      className="ml-2"
-                      size="sm"
-                      disabled={!account}
-                      onClick={() => onCommit(group.name, token.token_data_id)}
-                    >
-                      Commit
-                    </Button>
-                  </span>
+                  <PoolTokenRow
+                    key={token.token_data_id}
+                    token={token}
+                    onCopy={onCopy}
+                    onCommit={onCommit}
+                    poolAddress={group.name}
+                    shorten={shorten}
+                    isSubmitting={isSubmitting}
+                    isWalletReady={Boolean(account)}
+                  />
                 ))}
               </div>
             ))}
@@ -117,5 +115,55 @@ export function UserPositions() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+type PoolToken = {
+  token_data_id: string;
+  amount: any;
+  current_token_data?: {
+    token_name: string;
+  } | null;
+};
+
+type PoolTokenRowProps = {
+  token: PoolToken;
+  onCopy: (value: string) => void;
+  onCommit: (poolAddress: string, positionAddress: string) => void;
+  poolAddress: string;
+  shorten: (value: string) => string;
+  isSubmitting: boolean;
+  isWalletReady: boolean;
+};
+
+function PoolTokenRow({
+  token,
+  onCopy,
+  onCommit,
+  poolAddress,
+  shorten,
+  isSubmitting,
+  isWalletReady,
+}: PoolTokenRowProps) {
+  const tokenName = token.current_token_data?.token_name ?? "";
+  const positionIdx = Number(tokenName.split("_")[1]);
+  return (
+    <span className="pl-4">
+      PositionID #{Number.isFinite(positionIdx) ? positionIdx : "unknown"}:<span>  </span>
+      <code
+        className="border border-input rounded px-2 py-1"
+        onClick={() => onCopy(token.token_data_id)}
+      >
+        {shorten(token.token_data_id)}
+      </code>
+      <Button
+        className="ml-2"
+        size="sm"
+        disabled={!isWalletReady || isSubmitting}
+        onClick={() => onCommit(poolAddress, token.token_data_id)}
+      >
+        Commit
+      </Button>
+    </span>
   );
 }
