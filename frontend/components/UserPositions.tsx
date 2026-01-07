@@ -79,7 +79,7 @@ export function UserPositions() {
         <p className="text-sm text-muted-foreground">No tokens found for this collection.</p>
       ) : null}
       {tokens.length > 0 ? (
-        <div className="flex flex-col gap-3">
+        <div className="text-sm flex flex-col gap-3">
           <div className="flex flex-col gap-2">
             {[...groupedTokens.entries()].map(([key, group]) => (
               <div key={key} className="flex flex-col gap-1">

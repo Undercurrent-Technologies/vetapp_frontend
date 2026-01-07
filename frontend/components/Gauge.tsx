@@ -40,7 +40,7 @@ export function Gauge() {
       const executedTransaction = await aptosClient().waitForTransaction({
         transactionHash: committedTransaction.hash,
       });
-      queryClient.invalidateQueries({ queryKey: ["gauge-pools"] });
+      queryClient.invalidateQueries({ queryKey: ["user-positions", "gauge-pools"] });
       toast({
         title: "Success",
         description: `Transaction succeeded, hash: ${executedTransaction.hash}`,
@@ -87,7 +87,7 @@ export function Gauge() {
             const tokens = poolTokens[poolKey] ?? [];
 
             return (
-              <div key={poolKey} className="flex flex-col gap-2">
+              <div key={poolKey} className="text-sm flex flex-col gap-2">
                 <h3>
                   <span>Pool: </span>
                   <code
@@ -98,7 +98,7 @@ export function Gauge() {
                   </code>
                 </h3>
                 {tokens.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No positions for this pool.</p>
+                  <p className="text-muted-foreground">No positions for this pool.</p>
                 ) : (
                   <div className="flex flex-col gap-2">
                     {tokens.map((token) => (
