@@ -9,3 +9,21 @@ export const isValidNetworkName = (network: NetworkInfo | null) => {
   // we resolve it as a valid network name
   return true;
 };
+
+import {
+  AccountAddress,
+  createObjectAddress,
+  createResourceAddress
+} from '@aptos-labs/ts-sdk';
+
+export const deriveVaultAddress = (packageHex: string, vaultSeed: string): AccountAddress => {
+  const creatorAddress = AccountAddress.fromString(packageHex);
+  return createResourceAddress(creatorAddress, vaultSeed);
+};
+
+export const deriveCollectionAddress = (
+  vaultAddress: AccountAddress,
+  collectionName: string
+): AccountAddress => {
+  return createObjectAddress(vaultAddress, collectionName);
+};
