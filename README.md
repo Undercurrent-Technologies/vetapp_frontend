@@ -36,5 +36,13 @@ Some commands are built-in the template and can be ran as a npm script, for exam
 - `npm run move:upgrade` - a command to upgrade the Move contract
 - `npm run dev` - a command to run the frontend locally
 - `npm run deploy` - a command to deploy the dapp to Vercel
+- `npm run deploy:cloudflare` - a command to deploy the dapp to Cloudflare Workers
+
+## Cloudflare Workers deploy
+
+1. `npm install`
+2. `npm run deploy:cloudflare`
+
+The worker serves `dist` and falls back to `index.html` for SPA routes.
 
 For all other available CLI commands, can run `npx aptos` and see a list of all available commands.
