@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AMM_ACCOUNT_ADDRESS, GAUGE_ACCOUNT_ADDRESS, STABLE_ACCOUNT_ADDRESS, TAPP_ACCOUNT_ADDRESS, VETAPP_ACCOUNT_ADDRESS } from "@/constants";
 import { toast } from "@/components/ui/use-toast";
 import { faucetQuickMint } from "@/entry-functions/faucetQuickMint";
+import { mintTapp } from "@/entry-functions/mintTapp";
 import { aptosClient } from "@/utils/aptosClient";
 
 export function QuickAccess() {
@@ -43,6 +44,33 @@ export function QuickAccess() {
         variant: "destructive",
         title: "Error",
         description: "Failed to mint from faucet.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const onMintTapp = async () => {
+    if (!account || isSubmitting || !VETAPP_ACCOUNT_ADDRESS) {
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const committedTransaction = await signAndSubmitTransaction(mintTapp());
+      const executedTransaction = await aptosClient().waitForTransaction({
+        transactionHash: committedTransaction.hash,
+      });
+      toast({
+        title: "Success",
+        description: `Transaction succeeded, hash: ${executedTransaction.hash}`,
+      });
+    } catch (error) {
+      console.error(error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to mint $TAPP.",
       });
     } finally {
       setIsSubmitting(false);
@@ -105,17 +133,23 @@ export function QuickAccess() {
         className="underline underline-offset-4"
         href={""}
         rel="noreferrer"
-        onClick={(e)=> { e.preventDefault(); onQuickMint() }}
+        onClick={(e) => {
+          e.preventDefault();
+          onMintTapp();
+        }}
       >
-        Dispense $TAPP
+        Mint $TAPP
       </a>
       <a
         className="underline underline-offset-4"
         href={""}
         rel="noreferrer"
-        onClick={(e)=> { e.preventDefault(); onQuickMint() }}
+        onClick={(e) => {
+          e.preventDefault();
+          onQuickMint();
+        }}
       >
-        Dispense tokens (USDT, BTC...)
+        Mint (USDT, BTC...)
       </a>
     </div>
   );
