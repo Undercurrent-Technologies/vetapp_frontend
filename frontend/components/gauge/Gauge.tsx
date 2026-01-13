@@ -190,7 +190,7 @@ export function Gauge() {
 
   const isLoading = isFetching;
   const poolList = data?.pools ?? [];
-  const poolTokens = data?.poolTokens ?? {};
+  const poolTokens = data?.committedPositions ?? {};
   const activeBribeKey = activeBribePool?.poolKey ?? "";
   const activeBribeInput = activeBribeKey ? bribeInputs[activeBribeKey] ?? { tokenAddress: "", amount: "" } : { tokenAddress: "", amount: "" };
 

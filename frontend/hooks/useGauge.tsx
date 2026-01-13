@@ -32,7 +32,7 @@ export function useGauge() {
         },
       });
       const pools = poolsResult[0] ?? [];
-      const poolTokensEntries = await Promise.all(
+      const committedPositionEntries = await Promise.all(
         pools.map(async (poolAddress) => {
           const tokens = await aptosClient().getAccountOwnedTokensFromCollectionAddress({
             accountAddress: poolAddress,
@@ -42,7 +42,7 @@ export function useGauge() {
           return [poolAddress.toLowerCase(), tokens] as const;
         }),
       );
-      const committedPositions = poolTokensEntries.reduce<Record<string, PoolToken[]>>((acc, [poolAddress, tokens]) => {
+      const committedPositions = committedPositionEntries.reduce<Record<string, PoolToken[]>>((acc, [poolAddress, tokens]) => {
         acc[poolAddress] = tokens;
         return acc;
       }, {});
