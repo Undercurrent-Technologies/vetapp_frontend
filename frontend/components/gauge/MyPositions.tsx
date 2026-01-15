@@ -75,17 +75,33 @@ function MyPositionRow({
 }: MyPositionRowProps) {
   const tokenName = token.current_token_data?.token_name ?? "";
   const positionIdx = Number(tokenName.split("_")[1]);
+  const isClmm = poolType === PoolType.CLMM;
   const claimableAccountAddress =
     poolType === PoolType.STABLE
       ? STABLE_ACCOUNT_ADDRESS
       : poolType === PoolType.CLMM
         ? CLMM_ACCOUNT_ADDRESS
         : AMM_ACCOUNT_ADDRESS;
-  const canFetchClaimable = Boolean(claimableAccountAddress && Number.isFinite(positionIdx));
+  const canFetchClaimable = Boolean(
+    (isClmm ? CLMM_ACCOUNT_ADDRESS : claimableAccountAddress) &&
+      Number.isFinite(positionIdx),
+  );
   const { data: claimableData, isFetching: claimableFetching } = useQuery({
     queryKey: ["my-claimable", poolAddress, positionIdx, claimableAccountAddress ?? "", poolType],
     enabled: canFetchClaimable,
     queryFn: async (): Promise<Array<string | number | bigint>> => {
+      if (isClmm) {
+        const result = await aptosClient().view<
+          [string | number | bigint, string | number | bigint]
+        >({
+          payload: {
+            function: `${CLMM_ACCOUNT_ADDRESS}::clmm::get_position_fee_owed`,
+            functionArguments: [poolAddress, positionIdx],
+          },
+        });
+        return [result[0], result[1]];
+      }
+
       const result = await aptosClient().view<[Array<string | number | bigint>]>({
         payload: {
           function: `${claimableAccountAddress}::${poolType}::claimable`,

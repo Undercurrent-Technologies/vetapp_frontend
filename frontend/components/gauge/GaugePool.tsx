@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { GAUGE_ACCOUNT_ADDRESS } from "@/constants";
+import { GAUGE_ACCOUNT_ADDRESS, VETAPP_ACCOUNT_ADDRESS } from "@/constants";
 import { aptosClient } from "@/utils/aptosClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -84,7 +84,9 @@ export function GaugePool({
           <span className="text-xs text-muted-foreground">{poolMetaSummary}</span>
         </h3>
 
+          
         <RewardPerToken poolAddress={poolAddress} />
+        <VoteWeight poolAddress={poolAddress} />
 
         <h3><b>My Positions</b></h3>
         <div className="flex flex-wrap items-center gap-2"></div>
@@ -148,6 +150,32 @@ function RewardPerToken({ poolAddress }: RewardPerTokenProps) {
   return (
     <span>
       Reward per LP token: {isFetching ? "Loading..." : `${data ?? 0}`}
+    </span>
+  );
+}
+
+type VoteWeightProps = {
+  poolAddress: string;
+};
+
+function VoteWeight({ poolAddress }: VoteWeightProps) {
+  const { data, isFetching } = useQuery({
+    queryKey: ["voter-weight", poolAddress],
+    enabled: Boolean(VETAPP_ACCOUNT_ADDRESS),
+    queryFn: async (): Promise<string | number | bigint> => {
+      const result = await aptosClient().view<[string | number | bigint]>({
+        payload: {
+          function: `${VETAPP_ACCOUNT_ADDRESS}::voter::weights`,
+          functionArguments: [poolAddress],
+        },
+      });
+      return result[0];
+    },
+  });
+
+  return (
+    <span>
+      Vote weight: {isFetching ? "Loading..." : `${data ?? 0}`}
     </span>
   );
 }
