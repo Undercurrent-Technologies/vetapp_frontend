@@ -84,8 +84,8 @@ export function GaugePool({
           <span className="text-xs text-muted-foreground">{poolMetaSummary}</span>
         </h3>
 
-          
-        <RewardPerToken poolAddress={poolAddress} />
+        <Left poolAddress={poolAddress} />
+        {poolType !== PoolType.CLMM && <RewardPerToken poolAddress={poolAddress} />}
         <VoteWeight poolAddress={poolAddress} />
 
         <h3><b>My Positions</b></h3>
@@ -131,6 +131,55 @@ export function GaugePool({
 type RewardPerTokenProps = {
   poolAddress: string;
 };
+
+type LeftProps = {
+  poolAddress: string;
+};
+
+function Left({ poolAddress }: LeftProps) {
+  const { data, isFetching } = useQuery({
+    queryKey: ["gauge-left", poolAddress],
+    enabled: Boolean(GAUGE_ACCOUNT_ADDRESS),
+    queryFn: async (): Promise<string | number | bigint> => {
+      const result = await aptosClient().view<[string | number | bigint]>({
+        payload: {
+          function: `${GAUGE_ACCOUNT_ADDRESS}::gauge::left`,
+          functionArguments: [poolAddress],
+        },
+      });
+      return result[0];
+    },
+  });
+
+  return (
+    <span>
+      Left: {isFetching ? "Loading..." : formatDecimal8(data ?? 0)}
+    </span>
+  );
+}
+
+function formatDecimal8(value: string | number | bigint) {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      return "0.00000000";
+    }
+    if (!Number.isInteger(value)) {
+      return value.toFixed(8);
+    }
+  }
+
+  const raw = value.toString();
+  if (raw.includes(".")) {
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed.toFixed(8) : "0.00000000";
+  }
+
+  const base = 100000000n;
+  const integer = BigInt(raw);
+  const whole = integer / base;
+  const fraction = integer % base;
+  return `${whole}.${fraction.toString().padStart(8, "0")}`;
+}
 
 function RewardPerToken({ poolAddress }: RewardPerTokenProps) {
   const { data, isFetching } = useQuery({
