@@ -8,7 +8,10 @@ upload_source_maps = true
 enabled = true
 
 [triggers]
-crons = ["1 * * * *"]
+crons = [
+  "1 * * * *",
+  "*/5 * * * *"
+]
 
 [assets]
 directory = "./dist/client"

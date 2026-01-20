@@ -1,23 +1,23 @@
 import { Account, Aptos, AptosConfig, Ed25519PrivateKey, Network } from "@aptos-labs/ts-sdk";
 
-export type DistributeGaugesConfig = {
+export type SendTxConfig = {
   functionId: `${string}::${string}::${string}`;
   privateKey: string;
-  network?: Network;
+  network: Network;
   apiKey?: string;
 };
 
-export async function distributeGauges(config: DistributeGaugesConfig): Promise<string> {
+export async function submitTx(config: SendTxConfig, functionArguments: any[]): Promise<string> {
   try {
     const account = Account.fromPrivateKey({
       privateKey: new Ed25519PrivateKey(config.privateKey) 
     });
-    const aptos = new Aptos(new AptosConfig({ network: Network.TESTNET }));
+    const aptos = new Aptos(new AptosConfig({ network: config.network }));
     const txn = await aptos.transaction.build.simple({
       sender: account.accountAddress,
       data: {
         function: config.functionId,
-        functionArguments: [],
+        functionArguments,
       },
     });
 
@@ -44,7 +44,9 @@ export async function distributeGauges(config: DistributeGaugesConfig): Promise<
 
     return executedTransaction.hash;
   } catch (error) {
-    console.error("distributeGauges failed", error);
+    console.log("config", config);
+    console.log("functionArgs", functionArguments);
+    console.error("submit tx failed", error);
     throw error;
   }
 }

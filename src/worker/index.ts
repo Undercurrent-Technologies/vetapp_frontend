@@ -1,6 +1,6 @@
 import { Network } from "@aptos-labs/ts-sdk";
 import { Hono } from "hono";
-import { distributeGauges } from "./epoch_runner";
+import { submitTx } from "./submit_tx";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -10,18 +10,43 @@ app.get("/api/health", (c) => {
 
 export default {
   fetch: app.fetch,
-  scheduled: async (_event: ScheduledEvent, env: Env, ctx: ExecutionContext) => {
+  scheduled: async (event: ScheduledEvent, env: Env, ctx: ExecutionContext) => {
     if (!env.APTOS_PRIVATE_KEY) {
       console.warn("Skipping cron: APTOS_PRIVATE_KEY is not set");
       return;
     }
-    ctx.waitUntil(
-      distributeGauges({
-        functionId: 
-          `${env.VITE_MODULE_VETAPP_ACCOUNT_ADDRESS}::helper_ve::distribute_gauges`,
-        privateKey: env.APTOS_PRIVATE_KEY,
-        network: (env.VITE_APP_NETWORK ?? "testnet") as Network,
-      }),
-    );
+
+    switch (event.cron) {
+      case "1 * * * *": {
+        ctx.waitUntil(
+          submitTx(
+            {
+              functionId: `${env.VITE_MODULE_VETAPP_ACCOUNT_ADDRESS}::helper_ve::distribute_gauges`,
+              privateKey: env.APTOS_PRIVATE_KEY,
+              network: (env.VITE_APP_NETWORK ?? "testnet") as Network,
+            },
+            []
+          ),
+        );
+        break;
+      }
+      case "*/5 * * * *": {
+        ctx.waitUntil(
+          submitTx(
+            {
+              functionId: `${env.VITE_MODULE_VETAPP_ACCOUNT_ADDRESS}::helper_ve::swaps_pools`,
+              privateKey: env.APTOS_PRIVATE_KEY,
+              network: (env.VITE_APP_NETWORK ?? "testnet") as Network,
+            },
+            []
+          ),
+        );
+        break;
+      }
+      default: {
+        console.error("unknown cron:", event.cron);
+        break;
+      }
+    }
   },
 };
