@@ -216,7 +216,7 @@ export function Vote() {
                 {isSubmitting ? "Updating..." : "Update Period"}
               </Button>
             </div>
-            <div>Weekly emission: {formatNumber8(data.weeklyEmission)}</div>
+            <div>Next weekly emission: {formatNumber8(data.weeklyEmission)}</div>
           </div>
         )}</div>
         <div>
