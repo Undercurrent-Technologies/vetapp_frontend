@@ -1,0 +1,27 @@
+name: Deploy Update to Development
+run-name: Build Image for Development has been triggered by CI
+
+on:
+  push:
+    branches:
+      - development
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    uses: Undercurrent-Technologies/devops-pipelines/.github/workflows/base-deployment.yml@v0.0.10
+    with:
+      environment: development
+      project: tapp-dex
+      app_name: vetapp-frontend
+      parse_env: true
+      var_name: ENV
+    secrets: inherit
+  
+  update-cm:
+    uses: Undercurrent-Technologies/devops-pipelines/.github/workflows/kube-cm-deployment.yml@v0.0.10
+    with:
+      environment: development
+      project: tapp-dex
+      app_name: vetapp-frontend
+    secrets: inherit
