@@ -8,7 +8,7 @@ on:
 
 jobs:
   deploy:
-    uses: Undercurrent-Technologies/tapp-display-engine/.github/workflows/reusable_image_build.yml@development
+    uses: Undercurrent-Technologies/vetapp_frontend/.github/workflows/reusable_image_build.yml@development
     permissions:
       id-token: none
       contents: read
