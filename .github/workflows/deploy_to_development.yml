@@ -8,11 +8,10 @@ on:
 
 jobs:
   deploy:
-    uses: Undercurrent-Technologies/vetapp_frontend/.github/workflows/reusable_image_build.yml@development
+    uses: Undercurrent-Technologies/tapp-display-engine/.github/workflows/reusable_image_build.yml@development
     permissions:
-      id-token: write
+      id-token: none
       contents: read
     with:
       environment: development
-      version_tag: development-$GITHUB_RUN_NUMBER
     secrets: inherit

@@ -7,7 +7,6 @@ on:
         required: true
         type: string
         default: dev
-
 env:
   KUBE_NAMESPACE: ${{ inputs.environment }}
   ACCESS_USER: ${{ secrets.ACCESS_USER }}
@@ -19,23 +18,16 @@ jobs:
     environment:
       name: ${{inputs.environment}}
     permissions:
-      id-token: write
+      id-token: none
       contents: read
     steps:
-      - name: Debug SSH Connection
-        run: |
-          echo "${{ secrets.GCP_SSH_PRIVATE_KEY }}" > key.pem
-          chmod 600 key.pem
-          ssh -i key.pem -o StrictHostKeyChecking=no deployment@${{ vars.SSH_HOST }} "echo 'SSH connection successful'"
-
       - name: executing remote ssh commands using password
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ vars.SSH_HOST }}
           key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
-          username: deployment
+          username: ${{ vars.SSH_USER }}
           port: 22
           script: |
             sudo kubectl delete secret ghcr-creds -n ${{inputs.environment}} --ignore-not-found=true
             sudo kubectl create secret docker-registry ghcr-creds --docker-server=https://ghcr.io --docker-username=${{ secrets.ACCESS_USER }} --docker-password=${{ secrets.ACCESS_TOKEN }} -n ${{inputs.environment}}
-            sudo kubectl apply -f ./configmap.yaml -n ${{inputs.environment}}

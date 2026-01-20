@@ -1,4 +1,4 @@
-name: Deploy Configmap to DevServer
+name: Deploy Configmap to Development Server
 run-name: Deploy CM for Development has been triggered by CI
 
 on:
@@ -7,9 +7,9 @@ on:
       - development
 jobs:
   deploy:
-    uses: Undercurrent-Technologies/vetapp_frontend/.github/workflows/reusable_kube_cm_deployment.yml@development
+    uses: Undercurrent-Technologies/tapp-display-engine/.github/workflows/reusable_kube_cm_dev_deployment.yml@development
     permissions:
-      id-token: write
+      id-token: none
       contents: read
     with:
       environment: development
