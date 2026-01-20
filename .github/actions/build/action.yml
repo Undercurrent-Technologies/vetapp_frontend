@@ -1,0 +1,56 @@
+name: Deploy to GitHub Container Registry
+description: Reusable deployment pipeline action for Docker
+
+inputs:
+  docker_context:
+    required: true
+    description: "Dockerfile Context"
+  dockerfile_path:
+    required: true
+    description: "Path to the Dockerfile"
+    default: "Dockerfile"
+  environment:
+    required: true
+    description: "The target environment"
+  ghcr_token:
+    required: true
+    description: "GitHub Container Registry token"
+  ghcr_username:
+    required: true
+    description: "GitHub Container Registry username"
+  build_args:
+    required: false
+    description: "Arguments to pass to the Docker build"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ inputs.ghcr_username }}
+        password: ${{ inputs.ghcr_token }}
+        
+    - name: Convert repository name to lowercase
+      id: lowercase
+      run: |
+        REPO_NAME="${{ github.event.repository.name }}"
+        REPO_NAME_LOWER=$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]')
+        echo "repo_name_lower=$REPO_NAME_LOWER" >> $GITHUB_ENV
+      shell: bash
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.docker_context }}
+        file: ${{ inputs.docker_context }}/${{ inputs.dockerfile_path }}
+        push: true
+        tags: ghcr.io/undercurrent-technologies/${{ env.repo_name_lower }}:${{ inputs.environment }}-${{ github.run_number }}
+        build-args: ${{ inputs.build_args }}
+        secrets: |
+          ACCESS_USER=${{ inputs.ghcr_username }}
+          ACCESS_TOKEN=${{ inputs.ghcr_token }}
