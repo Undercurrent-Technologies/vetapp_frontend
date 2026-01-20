@@ -1,17 +1,21 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AMM_ACCOUNT_ADDRESS, CLMM_ACCOUNT_ADDRESS, STABLE_ACCOUNT_ADDRESS } from "@/constants";
 import { aptosClient } from "@/utils/aptosClient";
 import { formatNumber8 } from "@/utils/format";
 import { Button } from "@/components/ui/button";
 import { PoolType, PoolToken } from "@/components/gauge/types";
+import { toast } from "@/components/ui/use-toast";
+import { toastTransactionSuccess } from "@/utils/transactionToast";
+import { gaugeCommit } from "@/entry-functions/gaugeCommit";
+import { claimFees } from "@/entry-functions/claimFees";
 
 type MyPositionsProps = {
   tokens: PoolToken[];
   poolAddress: string;
   poolType: PoolType;
   onCopy: (value: string) => void;
-  onCommit: (poolAddress: string, positionAddress: string) => void;
-  onClaimFees: (poolAddress: string, positionAddress: string) => void;
   shorten: (value: string) => string;
   isSubmitting: boolean;
   isWalletReady: boolean;
@@ -22,12 +26,79 @@ export function MyPositions({
   poolAddress,
   poolType,
   onCopy,
-  onCommit,
-  onClaimFees,
   shorten,
   isSubmitting,
   isWalletReady,
 }: MyPositionsProps) {
+  const { account, signAndSubmitTransaction } = useWallet();
+  const queryClient = useQueryClient();
+  const [isSubmittingLocal, setIsSubmittingLocal] = useState(false);
+  const isBusy = isSubmitting || isSubmittingLocal;
+
+  const onCommit = async (positionAddress: string) => {
+    if (!account || isBusy) {
+      return;
+    }
+
+    try {
+      setIsSubmittingLocal(true);
+      const committedTransaction = await signAndSubmitTransaction(
+        gaugeCommit({
+          poolAddress,
+          positionAddress,
+        }),
+      );
+      const executedTransaction = await aptosClient().waitForTransaction({
+        transactionHash: committedTransaction.hash,
+      });
+      queryClient.invalidateQueries({ queryKey: ["position-commit", account.address] });
+      queryClient.invalidateQueries({
+        queryKey: ["gauge-committed-positions", poolAddress.toLowerCase()],
+      });
+      toastTransactionSuccess(executedTransaction.hash);
+    } catch (error) {
+      console.error(error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to commit position.",
+      });
+    } finally {
+      setIsSubmittingLocal(false);
+      queryClient.invalidateQueries({ queryKey: ["user-positions", account.address] });
+    }
+  };
+
+  const onClaimFees = async (positionAddress: string) => {
+    if (!account || isBusy) {
+      return;
+    }
+
+    try {
+      setIsSubmittingLocal(true);
+      const committedTransaction = await signAndSubmitTransaction(
+        claimFees({
+          poolAddress,
+          positionAddress,
+        }),
+      );
+      const executedTransaction = await aptosClient().waitForTransaction({
+        transactionHash: committedTransaction.hash,
+      });
+      queryClient.invalidateQueries({ queryKey: ["my-claimable", poolAddress] });
+      toastTransactionSuccess(executedTransaction.hash);
+    } catch (error) {
+      console.error(error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to claim fees.",
+      });
+    } finally {
+      setIsSubmittingLocal(false);
+    }
+  };
+
   return (
     <div className="rounded-lg border border-muted-foreground bg-card p-3">
       <div className="flex flex-col gap-2">
@@ -41,7 +112,7 @@ export function MyPositions({
             onCommit={onCommit}
             onClaimFees={onClaimFees}
             shorten={shorten}
-            isSubmitting={isSubmitting}
+            isSubmitting={isBusy}
             isWalletReady={isWalletReady}
           />
         ))}
@@ -55,8 +126,8 @@ type MyPositionRowProps = {
   poolAddress: string;
   poolType: PoolType;
   onCopy: (value: string) => void;
-  onCommit: (poolAddress: string, positionAddress: string) => void;
-  onClaimFees: (poolAddress: string, positionAddress: string) => void;
+  onCommit: (positionAddress: string) => void;
+  onClaimFees: (positionAddress: string) => void;
   shorten: (value: string) => string;
   isSubmitting: boolean;
   isWalletReady: boolean;
@@ -129,7 +200,7 @@ function MyPositionRow({
           size="sm"
           className="h-7 px-2 text-xs"
           disabled={!isWalletReady || isSubmitting}
-          onClick={() => onCommit(poolAddress, token.token_data_id)}
+          onClick={() => onCommit(token.token_data_id)}
         >
           Commit
         </Button>
@@ -143,7 +214,7 @@ function MyPositionRow({
           size="sm"
           className="h-7 px-2 text-xs"
           disabled={!isWalletReady || isSubmitting || !canFetchClaimable}
-          onClick={() => onClaimFees(poolAddress, token.token_data_id)}
+          onClick={() => onClaimFees(token.token_data_id)}
         >
           Claim fees
         </Button>

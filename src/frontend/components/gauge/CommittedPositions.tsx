@@ -1,33 +1,110 @@
-import { useQuery } from "@tanstack/react-query";
-import { AMM_ACCOUNT_ADDRESS, CLMM_ACCOUNT_ADDRESS, GAUGE_ACCOUNT_ADDRESS, STABLE_ACCOUNT_ADDRESS } from "@/constants";
+import { useState } from "react";
+import { useWallet } from "@aptos-labs/wallet-adapter-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AMM_ACCOUNT_ADDRESS, CLMM_ACCOUNT_ADDRESS, GAUGE_ACCOUNT_ADDRESS, STABLE_ACCOUNT_ADDRESS, VETAPP_ACCOUNT_ADDRESS } from "@/constants";
 import { aptosClient } from "@/utils/aptosClient";
 import { formatNumber8 } from "@/utils/format";
 import { Button } from "@/components/ui/button";
 import { PoolToken, PoolType } from "@/components/gauge/types";
+import { toast } from "@/components/ui/use-toast";
+import { toastTransactionSuccess } from "@/utils/transactionToast";
+import { gaugeUncommit } from "@/entry-functions/gaugeUncommit";
 
 type CommittedPositionsProps = {
-  tokens: PoolToken[];
+  committedPositions: PoolToken[];
   poolAddress: string;
   poolType: PoolType;
   onCopy: (value: string) => void;
-  onUncommit: (poolAddress: string, positionAddress: string) => void;
-  onClaimReward: (poolAddress: string, positionAddress: string) => void;
   shorten: (value: string) => string;
   isSubmitting: boolean;
   isWalletReady: boolean;
 };
 
 export function CommittedPositions({
-  tokens,
+  committedPositions: tokens,
   poolAddress,
   poolType,
   onCopy,
-  onUncommit,
-  onClaimReward,
   shorten,
   isSubmitting,
   isWalletReady,
 }: CommittedPositionsProps) {
+  const { account, signAndSubmitTransaction } = useWallet();
+  const queryClient = useQueryClient();
+  const [isSubmittingLocal, setIsSubmittingLocal] = useState(false);
+  const isBusy = isSubmitting || isSubmittingLocal;
+
+  const onUncommit = async (positionAddress: string) => {
+    if (!account || isBusy) {
+      return;
+    }
+
+    try {
+      setIsSubmittingLocal(true);
+      const committedTransaction = await signAndSubmitTransaction(
+        gaugeUncommit({
+          poolAddress,
+          positionAddress,
+        }),
+      );
+      const executedTransaction = await aptosClient().waitForTransaction({
+        transactionHash: committedTransaction.hash,
+      });
+      queryClient.invalidateQueries({ queryKey: ["user-positions", "gauge-pools"] });
+      queryClient.invalidateQueries({
+        queryKey: ["gauge-committed-positions", poolAddress.toLowerCase()],
+      });
+      toastTransactionSuccess(executedTransaction.hash);
+    } catch (error) {
+      console.error(error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to uncommit position.",
+      });
+    } finally {
+      setIsSubmittingLocal(false);
+    }
+  };
+
+  const onClaimReward = async (positionAddress: string) => {
+    if (!account || isBusy || !positionAddress) {
+      return;
+    }
+    if (!VETAPP_ACCOUNT_ADDRESS) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "VETAPP address not configured.",
+      });
+      return;
+    }
+
+    try {
+      setIsSubmittingLocal(true);
+      const committedTransaction = await signAndSubmitTransaction({
+        data: {
+          function: `${VETAPP_ACCOUNT_ADDRESS}::voter::claim_rewards`,
+          functionArguments: [[poolAddress], [positionAddress]],
+        },
+      });
+      const executedTransaction = await aptosClient().waitForTransaction({
+        transactionHash: committedTransaction.hash,
+      });
+      queryClient.invalidateQueries({ queryKey: ["gauge-earned", poolAddress, positionAddress] });
+      toastTransactionSuccess(executedTransaction.hash);
+    } catch (error) {
+      console.error(error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to claim reward.",
+      });
+    } finally {
+      setIsSubmittingLocal(false);
+    }
+  };
+
   return (
     <div className="rounded-lg border border-muted-foreground bg-card p-3">
       <div className="flex flex-col gap-2">
@@ -41,7 +118,7 @@ export function CommittedPositions({
             poolAddress={poolAddress}
             poolType={poolType}
             shorten={shorten}
-            isSubmitting={isSubmitting}
+            isSubmitting={isBusy}
             isWalletReady={isWalletReady}
           />
         ))}
@@ -53,8 +130,8 @@ export function CommittedPositions({
 type PoolTokenRowProps = {
   token: PoolToken;
   onCopy: (value: string) => void;
-  onUncommit: (poolAddress: string, positionAddress: string) => void;
-  onClaimReward: (poolAddress: string, positionAddress: string) => void;
+  onUncommit: (positionAddress: string) => void;
+  onClaimReward: (positionAddress: string) => void;
   poolAddress: string;
   poolType: PoolType;
   shorten: (value: string) => string;
@@ -98,7 +175,7 @@ function PoolTokenRow({
         : AMM_ACCOUNT_ADDRESS;
   const canFetchClaimable = Boolean(
     (isClmm ? CLMM_ACCOUNT_ADDRESS : claimableAccountAddress) &&
-      Number.isFinite(positionIdx),
+    Number.isFinite(positionIdx),
   );
   const { data: claimableData, isFetching: claimableFetching } = useQuery({
     queryKey: ["claimable", poolAddress, positionIdx, claimableAccountAddress ?? "", poolType],
@@ -142,7 +219,7 @@ function PoolTokenRow({
           size="sm"
           className="h-7 px-2 text-xs"
           disabled={!isWalletReady || isSubmitting}
-          onClick={() => onUncommit(poolAddress, token.token_data_id)}
+          onClick={() => onUncommit(token.token_data_id)}
         >
           Uncommit
         </Button>
@@ -166,7 +243,7 @@ function PoolTokenRow({
           size="sm"
           className="h-7 px-2 text-xs"
           disabled={!isWalletReady || isSubmitting || !positionAddress}
-          onClick={() => onClaimReward(poolAddress, positionAddress)}
+          onClick={() => onClaimReward(positionAddress)}
         >
           Get reward
         </Button>

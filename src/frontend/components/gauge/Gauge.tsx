@@ -1,6 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useWallet } from "@aptos-labs/wallet-adapter-react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useGauge } from "@/hooks/useGauge";
 import { usePool } from "@/hooks/usePool";
 import { useUserPositions } from "@/hooks/useUserPositions";
@@ -12,15 +11,11 @@ import { GaugePool } from "@/components/gauge/GaugePool";
 import { AddBribe } from "@/components/gauge/AddBribe";
 import { toastTransactionSuccess } from "@/utils/transactionToast";
 import { PoolType, PoolToken } from "@/components/gauge/types";
-import { gaugeCommit } from "@/entry-functions/gaugeCommit";
-import { claimFees } from "@/entry-functions/claimFees";
-import { gaugeUncommit } from "@/entry-functions/gaugeUncommit";
 import { swapPool } from "@/entry-functions/swapPool";
 import { addLiquidity } from "@/entry-functions/addLiquidity";
 
 export function Gauge() {
   const { account, signAndSubmitTransaction } = useWallet();
-  const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isBribeDialogOpen, setIsBribeDialogOpen] = useState(false);
   const [activeBribePool, setActiveBribePool] = useState<{
@@ -34,6 +29,21 @@ export function Gauge() {
   const { getPoolMetaSummary, poolMetaByAddress } = usePool();
   const { data: userPositions } = useUserPositions();
   const { data: walletFungibleTokens = [] } = useWalletFungibleTokens();
+  const [pinnedPools, setPinnedPools] = useState<string[]>(() => {
+    if (typeof window === "undefined") {
+      return [];
+    }
+    try {
+      const raw = window.localStorage.getItem("pinned-gauges");
+      if (!raw) {
+        return [];
+      }
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
+    } catch {
+      return [];
+    }
+  });
   const shorten = (s: string) => `${s.slice(0, 6)}...${s.slice(-4)}`;
   const onCopy = async (data: string) => {
     if (navigator?.clipboard?.writeText) {
@@ -54,132 +64,19 @@ export function Gauge() {
       setActiveBribePool(null);
     }
   };
+  const onTogglePin = (poolKey: string) => {
+    setPinnedPools((prev) => {
+      if (prev.includes(poolKey)) {
+        return prev.filter((key) => key !== poolKey);
+      }
+      return [...prev, poolKey];
+    });
+  };
 
   const getPoolAddressFromToken = (token: PoolToken) => {
     let name = token.current_token_data?.token_name ?? token.token_data_id;
     name = name.split("_")[0].slice(1);
     return name;
-  };
-
-  const onCommit = async (poolAddress: string, positionAddress: string) => {
-    if (!account || isSubmitting) {
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-      const committedTransaction = await signAndSubmitTransaction(
-        gaugeCommit({
-          poolAddress,
-          positionAddress,
-        }),
-      );
-      const executedTransaction = await aptosClient().waitForTransaction({
-        transactionHash: committedTransaction.hash,
-      });
-      queryClient.invalidateQueries({ queryKey: ["position-commit", account.address] });
-      toastTransactionSuccess(executedTransaction.hash);
-    } catch (error) {
-      console.error(error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to commit position.",
-      });
-    } finally {
-      setIsSubmitting(false);
-      queryClient.invalidateQueries({ queryKey: ["user-positions", account.address] });
-    }
-  };
-
-  const onUncommit = async (poolAddress: string, positionAddress: string) => {
-    if (!account || isSubmitting) {
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-      const committedTransaction = await signAndSubmitTransaction(
-        gaugeUncommit({
-          poolAddress,
-          positionAddress,
-        }),
-      );
-      const executedTransaction = await aptosClient().waitForTransaction({
-        transactionHash: committedTransaction.hash,
-      });
-      queryClient.invalidateQueries({ queryKey: ["user-positions", "gauge-pools"] });
-      toastTransactionSuccess(executedTransaction.hash);
-    } catch (error) {
-      console.error(error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to uncommit position.",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const onClaimFees = async (poolAddress: string, positionAddress: string) => {
-    if (!account || isSubmitting) {
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-      const committedTransaction = await signAndSubmitTransaction(
-        claimFees({
-          poolAddress,
-          positionAddress,
-        }),
-      );
-      const executedTransaction = await aptosClient().waitForTransaction({
-        transactionHash: committedTransaction.hash,
-      });
-      queryClient.invalidateQueries({ queryKey: ["my-claimable", poolAddress] });
-      toastTransactionSuccess(executedTransaction.hash);
-    } catch (error) {
-      console.error(error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to claim fees.",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const onClaimReward = async (poolAddress: string, positionAddress: string) => {
-    if (!account || isSubmitting || !positionAddress) {
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-      const committedTransaction = await signAndSubmitTransaction({
-        data: {
-          function: `${VETAPP_ACCOUNT_ADDRESS}::voter::claim_rewards`,
-          functionArguments: [[poolAddress], [positionAddress]],
-        },
-      });
-      const executedTransaction = await aptosClient().waitForTransaction({
-        transactionHash: committedTransaction.hash,
-      });
-      queryClient.invalidateQueries({ queryKey: ["gauge-earned", poolAddress, positionAddress] });
-      toastTransactionSuccess(executedTransaction.hash);
-    } catch (error) {
-      console.error(error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to claim reward.",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   const onDistributeBribes = async (poolAddress: string, poolKey: string) => {
@@ -318,10 +215,32 @@ export function Gauge() {
 
   const isLoading = isFetching;
   const poolList = data?.pools ?? [];
-  const poolTokens = data?.committedPositions ?? {};
   const userTokens = userPositions?.tokens ?? [];
   const activeBribeKey = activeBribePool?.poolKey ?? "";
   const activeBribeInput = activeBribeKey ? bribeInputs[activeBribeKey] ?? { tokenAddress: "", amount: "" } : { tokenAddress: "", amount: "" };
+  const poolEntries = poolList.map((pool) => ({
+    poolAddress: `${pool}`,
+    poolKey: `${pool}`.toLowerCase(),
+  }));
+  const poolByKey = new Map(poolEntries.map((entry) => [entry.poolKey, entry]));
+  const pinnedSet = new Set(pinnedPools);
+  const orderedPools = [
+    ...pinnedPools
+      .map((poolKey) => poolByKey.get(poolKey))
+      .filter((entry): entry is { poolAddress: string; poolKey: string } => Boolean(entry)),
+    ...poolEntries.filter((entry) => !pinnedSet.has(entry.poolKey)),
+  ];
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      window.localStorage.setItem("pinned-gauges", JSON.stringify(pinnedPools));
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [pinnedPools]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -335,10 +254,7 @@ export function Gauge() {
       ) : null}
       {!isLoading && poolList.length > 0 ? (
         <div className="flex flex-col gap-4">
-          {poolList.map((pool) => {
-            const poolAddress = `${pool}`;
-            const poolKey = poolAddress.toLowerCase();
-            const tokens = poolTokens[poolKey] ?? [];
+          {orderedPools.map(({ poolAddress, poolKey }) => {
             const myPositions = userTokens.filter(
               (token) => getPoolAddressFromToken(token) === poolAddress,
             );
@@ -360,13 +276,10 @@ export function Gauge() {
                 poolKey={poolKey}
                 poolMetaSummary={getPoolMetaSummary(poolAddress)}
                 poolType={poolType}
-                tokens={tokens}
                 myPositions={myPositions}
+                isPinned={pinnedSet.has(poolKey)}
                 onCopy={onCopy}
-                onCommit={onCommit}
-                onClaimFees={onClaimFees}
-                onUncommit={onUncommit}
-                onClaimReward={onClaimReward}
+                onTogglePin={onTogglePin}
                 onOpenBribe={openBribeDialog}
                 onSwapPool={onSwapPool}
                 onAddLiquidity={onAddLiquidity}

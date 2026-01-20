@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { GAUGE_ACCOUNT_ADDRESS, VETAPP_ACCOUNT_ADDRESS } from "@/constants";
 import { aptosClient } from "@/utils/aptosClient";
 import { Button } from "@/components/ui/button";
@@ -6,19 +5,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { CommittedPositions } from "@/components/gauge/CommittedPositions";
 import { MyPositions } from "@/components/gauge/MyPositions";
 import { PoolType, PoolToken } from "@/components/gauge/types";
+import { useCommittedPositions } from "@/hooks/useCommittedPositions";
+import { useQuery } from "@tanstack/react-query";
 
 type GaugePoolProps = {
   poolAddress: string;
   poolKey: string;
   poolMetaSummary: string;
   poolType: PoolType;
-  tokens: PoolToken[];
   myPositions: PoolToken[];
+  isPinned: boolean;
   onCopy: (value: string) => void;
-  onCommit: (poolAddress: string, positionAddress: string) => void;
-  onClaimFees: (poolAddress: string, positionAddress: string) => void;
-  onUncommit: (poolAddress: string, positionAddress: string) => void;
-  onClaimReward: (poolAddress: string, positionAddress: string) => void;
+  onTogglePin: (poolKey: string) => void;
   onOpenBribe: (poolAddress: string, poolKey: string) => void;
   onSwapPool: (poolAddress: string) => void;
   onAddLiquidity: (poolAddress: string) => void;
@@ -32,13 +30,10 @@ export function GaugePool({
   poolKey,
   poolMetaSummary,
   poolType,
-  tokens,
   myPositions,
+  isPinned,
   onCopy,
-  onCommit,
-  onClaimFees,
-  onUncommit,
-  onClaimReward,
+  onTogglePin,
   onOpenBribe,
   onSwapPool,
   onAddLiquidity,
@@ -46,43 +41,56 @@ export function GaugePool({
   isSubmitting,
   isWalletReady,
 }: GaugePoolProps) {
+  const { data: committedPositions = [], isFetching: isCommittedFetching } =
+    useCommittedPositions(poolAddress);
+
   return (
     <Card className="text-xs border-muted-foreground shadow-sm">
       <CardContent className="flex flex-col gap-2">
-        <h3 className="flex items-center gap-2">
-          <b>Pool: </b>
-          <code
-            className="border border-input rounded px-2 py-1"
-            onClick={() => onCopy(poolAddress)}
-          >
-            {shorten(poolAddress)}
-          </code>
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="flex items-center gap-2 flex-wrap">
+            <b>Pool: </b>
+            <code
+              className="border border-input rounded px-2 py-1"
+              onClick={() => onCopy(poolAddress)}
+            >
+              {shorten(poolAddress)}
+            </code>
+            <Button
+              size="sm"
+              className="h-7 px-2 text-xs"
+              disabled={!isWalletReady || isSubmitting}
+              onClick={() => onOpenBribe(poolAddress, poolKey)}
+            >
+              Add Bribe
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 px-2 text-xs"
+              disabled={!isWalletReady || isSubmitting}
+              onClick={() => onSwapPool(poolAddress)}
+            >
+              Swap
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 px-2 text-xs"
+              disabled={!isWalletReady || isSubmitting}
+              onClick={() => onAddLiquidity(poolAddress)}
+            >
+              Add Liq
+            </Button>
+            <span className="text-xs text-muted-foreground">{poolMetaSummary}</span>
+          </h3>
           <Button
             size="sm"
-            className="h-7 px-2 text-xs"
-            disabled={!isWalletReady || isSubmitting}
-            onClick={() => onOpenBribe(poolAddress, poolKey)}
+            className="h-7 px-2 text-xs bg-[#39ff14] text-black hover:bg-[#2fe011]"
+            disabled={isSubmitting}
+            onClick={() => onTogglePin(poolKey)}
           >
-            Add Bribe
+            {isPinned ? "Unpin" : "Pin"}
           </Button>
-          <Button
-            size="sm"
-            className="h-7 px-2 text-xs"
-            disabled={!isWalletReady || isSubmitting}
-            onClick={() => onSwapPool(poolAddress)}
-          >
-            Swap
-          </Button>
-          <Button
-            size="sm"
-            className="h-7 px-2 text-xs"
-            disabled={!isWalletReady || isSubmitting}
-            onClick={() => onAddLiquidity(poolAddress)}
-          >
-            Add Liq
-          </Button>
-          <span className="text-xs text-muted-foreground">{poolMetaSummary}</span>
-        </h3>
+        </div>
 
         <Left poolAddress={poolAddress} />
         {poolType !== PoolType.CLMM && <RewardPerToken poolAddress={poolAddress} />}
@@ -98,8 +106,6 @@ export function GaugePool({
             poolAddress={poolAddress}
             poolType={poolType}
             onCopy={onCopy}
-            onCommit={onCommit}
-            onClaimFees={onClaimFees}
             shorten={shorten}
             isSubmitting={isSubmitting}
             isWalletReady={isWalletReady}
@@ -108,16 +114,16 @@ export function GaugePool({
 
         <h3><b>Committed Positions</b></h3>
         <div className="flex flex-wrap items-center gap-2"></div>
-        {tokens.length === 0 ? (
+        {isCommittedFetching ? (
+          <p className="text-muted-foreground">Loading committed positions...</p>
+        ) : committedPositions.length === 0 ? (
           <p className="text-muted-foreground">No positions for this pool.</p>
         ) : (
           <CommittedPositions
-            tokens={tokens}
+            committedPositions={committedPositions}
             poolAddress={poolAddress}
             poolType={poolType}
             onCopy={onCopy}
-            onUncommit={onUncommit}
-            onClaimReward={onClaimReward}
             shorten={shorten}
             isSubmitting={isSubmitting}
             isWalletReady={isWalletReady}

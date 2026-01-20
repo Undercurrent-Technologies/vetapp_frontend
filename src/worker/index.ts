@@ -1,9 +1,10 @@
 import { Network } from "@aptos-labs/ts-sdk";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { submitTx } from "./submit_tx";
 
 const app = new Hono<{ Bindings: Env }>();
-
+app.use("*", cors());
 app.get("/api/health", (c) => {
   return c.json({ status: "ok", timestamp: new Date().toISOString() });
 });
