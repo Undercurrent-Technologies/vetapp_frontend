@@ -1,0 +1,77 @@
+name: Build Dev Image
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      version_tag:
+        required: true
+        type: string
+env:
+  APP_NAME: tapp-dex-vetapp
+  KUBE_NAMESPACE: ${{inputs.environment}}
+  ENV_APP: ${{inputs.environment}}
+  IMAGE_NAME: ghcr.io/undercurrent-technologies/vetapp_frontend
+  ACCESS_USER: ${{ secrets.ACCESS_USER }}
+  ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+  GIT_TERMINAL_PROMPT: 1
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - if: ${{ github.ref_type == 'tag' }}
+        uses: bhowell2/github-substring-action@1.0.2
+        id: tag
+        with:
+          value: ${{ github.ref_name }}
+          index_of_str: v
+
+      - uses: actions/checkout@v3
+
+      - name: Build Push image to registry
+        run: |
+          git config --global url.https://${{ secrets.ACCESS_USER }}:${{ secrets.ACCESS_TOKEN }}@github.com/.insteadOf https://github.com
+          echo ${ACCESS_TOKEN} | docker login ghcr.io -u USERNAME --password-stdin
+          echo '${{vars.ENV}}' > .env
+          docker build --build-arg APP_NAME=${APP_NAME}  . --file Dockerfile  --tag ${IMAGE_NAME}:${{inputs.environment}}-${GITHUB_RUN_ID} --label "runnumber=${GITHUB_RUN_ID}"
+          docker push ${IMAGE_NAME}:${{inputs.environment}}-${GITHUB_RUN_ID}
+
+      - name: Fetch Service
+        # if: needs.filterpath.outputs.arcevmpath == 'true' ||  needs.filterpath.outputs.libpath == 'true' || needs.filterpath.outputs.apipath == 'true'
+        run: |
+          git config --global url.https://${{ secrets.ACCESS_USER }}:${{ secrets.ACCESS_TOKEN }}@github.com/.insteadOf https://github.com
+          git clone https://github.com/Undercurrent-Technologies/devops-service.git
+
+      - name: Install sed
+        # if: needs.filterpath.outputs.arcevmpath == 'true' ||  needs.filterpath.outputs.libpath == 'true' || needs.filterpath.outputs.apipath == 'true'
+        run: sudo apt-get install sed -y
+
+      - name: Modify YAML file
+        # if: needs.filterpath.outputs.arcevmpath == 'true' ||  needs.filterpath.outputs.libpath == 'true' || needs.filterpath.outputs.apipath == 'true'
+        run: 'sed -i "s|tag:.*|tag: ${{inputs.environment}}-${GITHUB_RUN_ID}|g" devops-service/helm/values/${APP_NAME}/values-${ENV_APP}.yaml'
+
+      - name: Display modified file
+        # if: needs.filterpath.outputs.arcevmpath == 'true' ||  needs.filterpath.outputs.libpath == 'true' || needs.filterpath.outputs.apipath == 'true'
+        run: cat devops-service/helm/values/${APP_NAME}/values-${ENV_APP}.yaml
+
+      - name: Display modified file
+        # if: needs.filterpath.outputs.arcevmpath == 'true' ||  needs.filterpath.outputs.libpath == 'true' || needs.filterpath.outputs.apipath == 'true'
+        run: cat devops-service/helm/values/${APP_NAME}/values-${ENV_APP}.yaml
+
+      - uses: leigholiver/commit-with-deploy-key@v1.0.4
+        # if: needs.filterpath.outputs.arcevmpath == 'true' ||  needs.filterpath.outputs.libpath == 'true' || needs.filterpath.outputs.apipath == 'true'
+        with:
+          source: devops-service/helm/values/
+          destination_folder: helm/values/
+          destination_repo: Undercurrent-Technologies/devops-service
+          destination_branch: master
+          deploy_key: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          commit_message: '[skip ci] bump version ${APP_NAME} ${{inputs.environment}}-${GITHUB_RUN_ID}'
