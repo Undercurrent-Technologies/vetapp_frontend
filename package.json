@@ -5,8 +5,8 @@
   "type": "module",
   "license": "Apache-2.0",
   "scripts": {
-    "prebuild": "bash export-wrangler-vars.sh",
     "cf-typegen": "wrangler types",
+    "prebuild": "bash export-wrangler-vars.sh && npm run cf-typegen",
     "build": "npm run prebuild && tsc && vite build --mode cloudflare",
     "dev": "npm run prebuild && vite --mode cloudflare",
     "dev:cloudflare": "npm run build && npx wrangler dev --local",
