@@ -9,8 +9,8 @@ enabled = true
 
 [triggers]
 crons = [
-  "1 * * * *",
-  "*/5 * * * *"
+  "1 * * * *"
+  # "*/5 * * * *"
 ]
 
 [assets]
