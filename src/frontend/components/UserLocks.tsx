@@ -51,7 +51,7 @@ function LockInfo({ token }: { token: LockToken }) {
       }
       const result = await aptosClient().view<[LockedBalance]>({
         payload: {
-          function: `${VETAPP_ACCOUNT_ADDRESS}::vetapp::locked_balance`,
+          function: `${VETAPP_ACCOUNT_ADDRESS}::vetapp::locked`,
           functionArguments: [tokenId],
         },
       });
