@@ -4,9 +4,19 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocks } from "@/hooks/useLocks";
 import { toast } from "@/components/ui/use-toast";
 import { aptosClient } from "@/utils/aptosClient";
-import { VETAPP_ACCOUNT_ADDRESS } from "@/constants";
+import { GAUGE_ACCOUNT_ADDRESS, VETAPP_ACCOUNT_ADDRESS } from "@/constants";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { createLock } from "@/entry-functions/createLock";
 import { increaseUnlockTime } from "@/entry-functions/increaseUnlockTime";
 import { vote } from "@/entry-functions/vote";
@@ -18,6 +28,12 @@ type PoolVotesProps = {
   tokenAddress: string;
   onCopy: (value: string) => void;
   shorten: (value: string) => string;
+  enabled?: boolean;
+};
+
+type PoolVoteMetrics = {
+  weight: string | number | bigint;
+  feeRewards: Array<string | number | bigint>;
 };
 
 type LockToken = {
@@ -162,56 +178,75 @@ function LockInfo({ token }: { token: LockToken }) {
   );
 }
 
-function PoolVotes({ tokenAddress, onCopy, shorten }: PoolVotesProps) {
+function PoolVotes({ tokenAddress, onCopy, shorten, enabled = true }: PoolVotesProps) {
   const { account, signAndSubmitTransaction } = useWallet();
-  const { data: gaugeData, isFetching: isGaugeFetching } = useGauge();
+  const gaugesEnabled = Boolean(tokenAddress && VETAPP_ACCOUNT_ADDRESS);
+  const { data: gaugeData, isFetching: isGaugeFetching } = useGauge(gaugesEnabled && enabled);
   const queryClient = useQueryClient();
   const [weightInputs, setWeightInputs] = useState<Record<string, string>>({});
   const [isVoting, setIsVoting] = useState(false);
+  const [selectedPool, setSelectedPool] = useState<string | null>(null);
   const { data: voteData, isFetching: isVoteFetching } = useQuery({
     queryKey: ["pool-votes", tokenAddress, gaugeData?.pools?.length ?? 0],
-    enabled: Boolean(VETAPP_ACCOUNT_ADDRESS) && !isGaugeFetching,
+    enabled: Boolean(VETAPP_ACCOUNT_ADDRESS) && enabled && !isGaugeFetching,
     queryFn: async (): Promise<{
       voted: boolean;
-      pools: { address: string; weight: string | number | bigint }[];
+      pools: string[];
     }> => {
       if (!VETAPP_ACCOUNT_ADDRESS) {
         return { voted: false, pools: [] };
       }
-      const votedResult = await aptosClient().view<[boolean]>({
+      const votedPoolsResult = await aptosClient().view<[string[]]>({
         payload: {
-          function: `${VETAPP_ACCOUNT_ADDRESS}::vetapp::voted`,
+          function: `${VETAPP_ACCOUNT_ADDRESS}::voter::voted_pools`,
           functionArguments: [tokenAddress],
         },
       });
-      const voted = votedResult[0] ?? false;
-      if (!voted) {
-        return { voted, pools: [] };
-      }
-
-      const pools = gaugeData?.pools ?? [];
-      const weights = await Promise.all(
-        pools.map((pool) =>
-          aptosClient().view<[string | number | bigint]>({
-            payload: {
-              function: `${VETAPP_ACCOUNT_ADDRESS}::voter::vote_of`,
-              functionArguments: [tokenAddress, pool],
-            },
-          }),
-        ),
-      );
-      const poolsWithWeights = pools.map((pool, index) => ({ address: pool, weight: weights[index][0] }));
-      return { voted, pools: poolsWithWeights };
+      const votedPools = votedPoolsResult[0] ?? [];
+      return { voted: votedPools.length > 0, pools: votedPools };
     },
   });
 
   const voted = voteData?.voted ?? false;
   const votedPools = voteData?.pools ?? [];
+  useEffect(() => {
+    if (votedPools.length === 0) {
+      setSelectedPool(null);
+      return;
+    }
+    if (!selectedPool || !votedPools.includes(selectedPool)) {
+      setSelectedPool(votedPools[0]);
+    }
+  }, [selectedPool, votedPools]);
+
+  const { data: selectedPoolMetrics, isFetching: isMetricsFetching } = useQuery({
+    queryKey: ["pool-vote-metrics", tokenAddress, selectedPool],
+    enabled: Boolean(VETAPP_ACCOUNT_ADDRESS && selectedPool && enabled),
+    queryFn: async (): Promise<PoolVoteMetrics> => {
+      if (!VETAPP_ACCOUNT_ADDRESS || !selectedPool) {
+        return { weight: "0", feeRewards: [] };
+      }
+      const weightResult = await aptosClient().view<[string | number | bigint]>({
+        payload: {
+          function: `${VETAPP_ACCOUNT_ADDRESS}::voter::vote_of`,
+          functionArguments: [tokenAddress, selectedPool],
+        },
+      });
+      const rewardResult = GAUGE_ACCOUNT_ADDRESS
+        ? await aptosClient().view<[Array<string | number | bigint>]>({
+            payload: {
+              function: `${GAUGE_ACCOUNT_ADDRESS}::fees_voting_reward::earned_many`,
+              functionArguments: [selectedPool, tokenAddress],
+            },
+          })
+        : [[]];
+      return {
+        weight: weightResult[0] ?? "0",
+        feeRewards: rewardResult[0] ?? [],
+      };
+    },
+  });
   const pools = gaugeData?.pools ?? [];
-  const votedWeights = votedPools.reduce<Record<string, string>>((acc, pool) => {
-    acc[pool.address] = `${pool.weight}`;
-    return acc;
-  }, {});
   useEffect(() => {
     if (pools.length === 0) {
       return;
@@ -289,16 +324,49 @@ function PoolVotes({ tokenAddress, onCopy, shorten }: PoolVotesProps) {
     <div className="text-xs flex flex-col gap-2 pl-4">
       <span className={voted ? "text-emerald-600" : "text-red-600"}>{voted ? "Voted" : "Not voted"}</span>
       {voted ? (
-        <ul className="list-disc pl-6">
-          {pools.map((pool) => (
-            <li key={pool}>
-              <code className="border border-input rounded px-2 py-1" onClick={() => onCopy(pool)}>
-                {shorten(pool)}
-              </code>{" "}
-              weight: {votedWeights[pool] ?? "0"}
-            </li>
-          ))}
-        </ul>
+        <div className="flex flex-col gap-3 pl-2">
+          {votedPools.length === 0 ? (
+            <span className="text-xs text-muted-foreground">
+              This lock is marked as voted but we couldn’t read any pools.
+            </span>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="text-[11px] text-muted-foreground" htmlFor="pool-select">
+                  Selected pool
+                </label>
+                <select
+                  id="pool-select"
+                  className="rounded border border-input bg-background px-2 py-1 text-xs"
+                  value={selectedPool ?? ""}
+                  onChange={(event) => setSelectedPool(event.target.value)}
+                >
+                  {votedPools.map((pool) => (
+                    <option key={pool} value={pool}>
+                      {shorten(pool)}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-muted-foreground">Metrics reflect the currently selected pool.</span>
+              </div>
+              <div className="flex flex-col gap-1 text-xs">
+                <span>
+                  Weight:{" "}
+                  {isMetricsFetching
+                    ? "Loading..."
+                    : formatNumber8(selectedPoolMetrics?.weight ?? "0")}
+                </span>
+                {selectedPoolMetrics?.feeRewards && selectedPoolMetrics.feeRewards.length > 0 ? (
+                  <span className="text-[11px] text-muted-foreground">
+                    Fee rewards: {selectedPoolMetrics.feeRewards.map((value) => formatNumber8(value)).join(", ")}
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground">No fee rewards yet for this pool.</span>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       ) : (
         <>
           <div className="text-[11px] text-muted-foreground">Leave weight empty to skip a pool.</div>
@@ -341,6 +409,36 @@ function PoolVotes({ tokenAddress, onCopy, shorten }: PoolVotesProps) {
   );
 }
 
+function useLockVoteStatus(tokenAddress: string) {
+  return useQuery({
+    queryKey: ["lock-vote-status", tokenAddress],
+    enabled: Boolean(VETAPP_ACCOUNT_ADDRESS && tokenAddress),
+    queryFn: async (): Promise<boolean> => {
+      if (!VETAPP_ACCOUNT_ADDRESS) {
+        return false;
+      }
+      const result = await aptosClient().view<[boolean]>({
+        payload: {
+          function: `${VETAPP_ACCOUNT_ADDRESS}::vetapp::voted`,
+          functionArguments: [tokenAddress],
+        },
+      });
+      return result[0] ?? false;
+    },
+  });
+}
+
+function LockVoteSummary({ tokenAddress }: { tokenAddress: string }) {
+  const { data: voted, isFetching } = useLockVoteStatus(tokenAddress);
+  const statusText = isFetching
+    ? "Checking vote status..."
+    : `Voted this epoch: ${voted ? "Yes" : "No"}`;
+  const statusClassName = isFetching
+    ? "text-xs text-muted-foreground"
+    : `text-xs ${voted ? "text-emerald-600" : "text-red-600"}`;
+  return <span className={statusClassName}>{statusText}</span>;
+}
+
 export function UserLocks() {
   const { account, signAndSubmitTransaction } = useWallet();
   const queryClient = useQueryClient();
@@ -351,6 +449,7 @@ export function UserLocks() {
   const locksScrollRef = useRef<HTMLDivElement | null>(null);
   const lockCardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [activeLockIndex, setActiveLockIndex] = useState(0);
+  const [openVoteTokenId, setOpenVoteTokenId] = useState<string | null>(null);
 
   const tokens: LockToken[] = data?.tokens ?? [];
   const shorten = (s: string) => `${s.slice(0, 6)}...${s.slice(-4)}`;
@@ -408,6 +507,12 @@ export function UserLocks() {
   useEffect(() => {
     setActiveLockIndex((current) => Math.min(current, Math.max(tokens.length - 1, 0)));
   }, [tokens.length]);
+
+  useEffect(() => {
+    if (openVoteTokenId && !tokens.some((token) => token.token_data_id === openVoteTokenId)) {
+      setOpenVoteTokenId(null);
+    }
+  }, [openVoteTokenId, tokens]);
 
   const scrollToLock = (index: number) => {
     if (tokens.length === 0) {
@@ -500,19 +605,58 @@ export function UserLocks() {
                   }}
                   className="min-w-[240px] max-w-[280px] shrink-0 snap-start rounded-md border border-input bg-card p-3"
                 >
-                  <div className="flex flex-col gap-2">
-                    <span>
-                      {token.current_token_data?.token_name} :
-                      <code
-                        className="border border-input rounded px-2 py-1"
-                        onClick={() => onCopy(token.token_data_id)}
+              <div className="flex flex-col gap-2">
+                <span>
+                  {token.current_token_data?.token_name} :
+                  <code
+                    className="border border-input rounded px-2 py-1"
+                    onClick={() => onCopy(token.token_data_id)}
+                  >
+                    {shorten(token.token_data_id)}
+                  </code>
+                </span>
+                <LockInfo token={token} />
+                <div className="flex items-center justify-between gap-2">
+                  <LockVoteSummary tokenAddress={token.token_data_id} />
+                  <Dialog
+                    open={openVoteTokenId === token.token_data_id}
+                    onOpenChange={(open) =>
+                      setOpenVoteTokenId(open ? token.token_data_id : null)
+                    }
+                  >
+                    <DialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        disabled={!account}
                       >
-                        {shorten(token.token_data_id)}
-                      </code>
-                    </span>
-                    <LockInfo token={token} />
-                    <PoolVotes tokenAddress={token.token_data_id} onCopy={onCopy} shorten={shorten} />
-                  </div>
+                        View voted pools
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-[min(90vw,800px)]">
+                      <DialogHeader>
+                        <DialogTitle>Vote pools for {shorten(token.token_data_id)}</DialogTitle>
+                        <DialogDescription>
+                          Add or adjust vote weights and inspect fee rewards tied to this lock.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <PoolVotes
+                        tokenAddress={token.token_data_id}
+                        onCopy={onCopy}
+                        shorten={shorten}
+                        enabled={openVoteTokenId === token.token_data_id}
+                      />
+                      <DialogFooter>
+                        <DialogClose asChild>
+                          <Button size="sm" variant="ghost">
+                            Close
+                          </Button>
+                        </DialogClose>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </div>
                 </div>
               ))}
             </div>

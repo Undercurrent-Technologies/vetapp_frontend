@@ -44,6 +44,7 @@ export function Gauge() {
       return [];
     }
   });
+  const [selectedPoolKey, setSelectedPoolKey] = useState<string>("");
   const shorten = (s: string) => `${s.slice(0, 6)}...${s.slice(-4)}`;
   const onCopy = async (data: string) => {
     if (navigator?.clipboard?.writeText) {
@@ -77,6 +78,11 @@ export function Gauge() {
     let name = token.current_token_data?.token_name ?? token.token_data_id;
     name = name.split("_")[0].slice(1);
     return name;
+  };
+
+  const normalizeAddress = (address: string) => {
+    const normalized = address.toLowerCase();
+    return normalized.startsWith("0x") ? normalized : `0x${normalized}`;
   };
 
   const onDistributeBribes = async (poolAddress: string, poolKey: string) => {
@@ -232,6 +238,35 @@ export function Gauge() {
   ];
 
   useEffect(() => {
+    if (orderedPools.length === 0) {
+      setSelectedPoolKey("");
+      return;
+    }
+    if (!selectedPoolKey || !orderedPools.some((entry) => entry.poolKey === selectedPoolKey)) {
+      setSelectedPoolKey(orderedPools[0].poolKey);
+    }
+  }, [orderedPools, selectedPoolKey]);
+
+  const selectedEntry = selectedPoolKey ? poolByKey.get(selectedPoolKey) : undefined;
+  const selectedPoolAddress = selectedEntry?.poolAddress ?? "";
+  const selectedMyPositions = selectedPoolAddress
+    ? userTokens.filter((token) => getPoolAddressFromToken(token) === selectedPoolAddress)
+    : [];
+  const selectedPoolMeta = selectedPoolAddress
+    ? poolMetaByAddress.get(normalizeAddress(selectedPoolAddress))
+    : undefined;
+  const selectedPoolType =
+    selectedPoolMeta?.hook_type_label === "STABLE" || selectedPoolMeta?.hook_type === 4
+      ? PoolType.STABLE
+      : selectedPoolMeta?.hook_type_label === "V3" || selectedPoolMeta?.hook_type === 3
+        ? PoolType.CLMM
+        : PoolType.AMM;
+  const selectedPoolMetaSummary = selectedPoolAddress
+    ? getPoolMetaSummary(selectedPoolAddress)
+    : "";
+  const selectedIsPinned = selectedEntry ? pinnedSet.has(selectedEntry.poolKey) : false;
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -254,41 +289,47 @@ export function Gauge() {
       ) : null}
       {!isLoading && poolList.length > 0 ? (
         <div className="flex flex-col gap-4">
-          {orderedPools.map(({ poolAddress, poolKey }) => {
-            const myPositions = userTokens.filter(
-              (token) => getPoolAddressFromToken(token) === poolAddress,
-            );
-            const normalizedPoolAddress = poolAddress.toLowerCase().startsWith("0x")
-              ? poolAddress.toLowerCase()
-              : `0x${poolAddress.toLowerCase()}`;
-            const poolMeta = poolMetaByAddress.get(normalizedPoolAddress);
-            const poolType =
-              poolMeta?.hook_type_label === "STABLE" || poolMeta?.hook_type === 4
-                ? PoolType.STABLE
-                : poolMeta?.hook_type_label === "V3" || poolMeta?.hook_type === 3
-                  ? PoolType.CLMM
-                  : PoolType.AMM;
-
-            return (
-              <GaugePool
-                key={poolKey}
-                poolAddress={poolAddress}
-                poolKey={poolKey}
-                poolMetaSummary={getPoolMetaSummary(poolAddress)}
-                poolType={poolType}
-                myPositions={myPositions}
-                isPinned={pinnedSet.has(poolKey)}
-                onCopy={onCopy}
-                onTogglePin={onTogglePin}
-                onOpenBribe={openBribeDialog}
-                onSwapPool={onSwapPool}
-                onAddLiquidity={onAddLiquidity}
-                shorten={shorten}
-                isSubmitting={isSubmitting}
-                isWalletReady={Boolean(account)}
-              />
-            );
-          })}
+          <div className="flex flex-wrap gap-2 pb-2">
+            {orderedPools.map(({ poolAddress, poolKey }) => {
+              const buttonActive = selectedPoolKey === poolKey;
+              const buttonPinned = pinnedSet.has(poolKey);
+              return (
+                <button
+                  key={poolKey}
+                  type="button"
+                  className={`inline-flex items-center gap-1 rounded border px-3 py-1 text-xs font-medium transition ${
+                    buttonActive
+                      ? "border-emerald-500 bg-emerald-50 text-emerald-900"
+                      : "border-input bg-background hover:border-primary"
+                  }`}
+                  onClick={() => setSelectedPoolKey(poolKey)}
+                >
+                  {shorten(poolAddress)}
+                  {buttonPinned ? <span className="text-emerald-600">★</span> : null}
+                </button>
+              );
+            })}
+          </div>
+          {selectedEntry ? (
+            <GaugePool
+              poolAddress={selectedPoolAddress}
+              poolKey={selectedEntry.poolKey}
+              poolMetaSummary={selectedPoolMetaSummary}
+              poolType={selectedPoolType}
+              myPositions={selectedMyPositions}
+              isPinned={selectedIsPinned}
+              onCopy={onCopy}
+              onTogglePin={onTogglePin}
+              onOpenBribe={openBribeDialog}
+              onSwapPool={onSwapPool}
+              onAddLiquidity={onAddLiquidity}
+              shorten={shorten}
+              isSubmitting={isSubmitting}
+              isWalletReady={Boolean(account)}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">Select a pool to view details.</p>
+          )}
         </div>
       ) : null}
       <AddBribe
