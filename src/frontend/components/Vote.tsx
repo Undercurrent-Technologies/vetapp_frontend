@@ -85,6 +85,14 @@ export function Vote() {
       args: [
         false,
       ]
+    },
+    {
+      key: "run_op",
+      label: "Run op",
+      functionName: "run_op",
+      args: [
+        []
+      ]
     }
   ]
 
@@ -99,7 +107,7 @@ export function Vote() {
   const runAction = async (action: {
     key: string;
     functionName: string;
-    args?: Array<string | number | bigint | boolean>;
+    args?: Array<string | number | bigint | boolean | any>;
   }) => {
     if (!account || adminSubmittingKey) {
       return;
