@@ -12,12 +12,12 @@ import { deriveVaultAddress } from "@/utils/helpers";
 import { toastTransactionSuccess } from "@/utils/transactionToast";
 import { useEpochData } from "@/hooks/useEpochData";
 
-const toEpochSeconds = (value: EpochView): number | null => {
+const toEpochSeconds = (value: any): number | null => {
   const numeric = typeof value === "bigint" ? Number(value) : Number(value);
   return Number.isFinite(numeric) ? numeric : null;
 };
 
-const toDisplay = (value: EpochView) => {
+const toDisplay = (value: any) => {
   const seconds = toEpochSeconds(value);
   if (seconds === null) {
     return `${value}`;
@@ -79,7 +79,7 @@ export function Vote() {
       ]
     },
     {
-      key: "initialize",
+      key: "initialize-stg",
       label: "Initialize (staging)",
       functionName: "initialize",
       args: [
@@ -122,7 +122,7 @@ export function Vote() {
       toast({
         variant: "destructive",
         title: "Error",
-        description: `Failed to run ${functionName}.`,
+        description: `Failed to run ${action.functionName}.`,
       });
     } finally {
       setAdminSubmittingKey(null);
